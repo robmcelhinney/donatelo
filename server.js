@@ -1,7 +1,7 @@
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createServer as createViteServer } from "vite";
 import { causes } from "./src/data.js";
@@ -10,6 +10,7 @@ import {
   createFreshSession,
   normalizeSession,
 } from "./src/session.js";
+import { createSessionStore } from "./src/sessionStore.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,25 +21,6 @@ const isProduction = process.env.NODE_ENV === "production";
 const storeDir = path.join(root, ".donatelo");
 const storePath = path.join(storeDir, "sessions.json");
 const distDir = path.join(root, "dist");
-
-const state = {
-  sessions: {},
-};
-
-async function loadStore() {
-  try {
-    const raw = await readFile(storePath, "utf8");
-    const parsed = JSON.parse(raw);
-    state.sessions = parsed.sessions || {};
-  } catch {
-    state.sessions = {};
-  }
-}
-
-async function persistStore() {
-  await mkdir(storeDir, { recursive: true });
-  await writeFile(storePath, `${JSON.stringify({ sessions: state.sessions }, null, 2)}\n`, "utf8");
-}
 
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -67,8 +49,10 @@ async function readJsonBody(req) {
   return JSON.parse(raw);
 }
 
+let sessionStore = null;
+
 function getSession(id) {
-  const raw = state.sessions[id];
+  const raw = sessionStore?.getRawSession(id);
   if (!raw) {
     return null;
   }
@@ -76,8 +60,11 @@ function getSession(id) {
 }
 
 async function saveSession(session) {
-  state.sessions[session.id] = session;
-  await persistStore();
+  await sessionStore.saveSession(session);
+}
+
+async function deleteSession(id) {
+  return sessionStore.deleteSession(id);
 }
 
 async function handleApi(req, res, pathname) {
@@ -101,6 +88,7 @@ async function handleApi(req, res, pathname) {
     const session = createFreshSession({
       start: Boolean(body.start),
       excludedCauseIds: Array.isArray(body.excludedCauseIds) ? body.excludedCauseIds : [],
+      customCauses: Array.isArray(body.customCauses) ? body.customCauses : [],
       allocationStyle: body.allocationStyle,
     });
     await saveSession(session);
@@ -136,6 +124,20 @@ async function handleApi(req, res, pathname) {
     const nextSession = applyAction(session, body);
     await saveSession(nextSession);
     sendJson(res, 200, nextSession);
+    return true;
+  }
+
+  if (req.method === "DELETE" && pathname === `/api/sessions/${encodeURIComponent(sessionId)}`) {
+    const deleted = await deleteSession(sessionId);
+    if (!deleted) {
+      sendJson(res, 404, { error: "Session not found." });
+      return true;
+    }
+
+    res.writeHead(204, {
+      "Cache-Control": "no-store",
+    });
+    res.end();
     return true;
   }
 
@@ -180,7 +182,7 @@ function serveStaticFile(req, res, pathname) {
 }
 
 async function main() {
-  await loadStore();
+  sessionStore = await createSessionStore(storePath);
 
   if (isProduction) {
     const server = http.createServer(async (req, res) => {

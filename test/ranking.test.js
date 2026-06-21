@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildConfidence,
+  buildResultExplanation,
   chooseNextPair,
   createInitialRatings,
   ratingsToAllocations,
@@ -127,5 +128,25 @@ test("buildConfidence returns a labeled confidence state", () => {
   const confidence = buildConfidence(14, allocations);
 
   assert.ok(confidence.score >= 0);
-  assert.ok(["Low", "Medium", "High"].includes(confidence.label));
+  assert.ok(["Light signal", "Moderate signal", "Strong signal"].includes(confidence.label));
+});
+
+test("buildResultExplanation gives a short result summary", () => {
+  const allocations = [
+    { id: "global-health", name: "Global Health", share: 52.5 },
+    { id: "poverty", name: "Poverty Alleviation", share: 28.7 },
+    { id: "animal-welfare", name: "Animal Welfare", share: 17.7 },
+  ];
+  const comparisons = [
+    { leftId: "global-health", rightId: "poverty", choice: "left" },
+    { leftId: "global-health", rightId: "animal-welfare", choice: "left" },
+    { leftId: "poverty", rightId: "animal-welfare", choice: "left" },
+  ];
+
+  const explanation = buildResultExplanation({ allocations, comparisons, allocationStyle: 50 });
+
+  assert.ok(explanation.length >= 2);
+  assert.equal(explanation[0].title, "Global Health ranked first");
+  assert.match(explanation[0].text, /won/i);
+  assert.match(explanation[explanation.length - 1].title, /allocation style/i);
 });

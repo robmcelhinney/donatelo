@@ -27,6 +27,29 @@ function normalizeAllocationStyle(allocationStyle = DEFAULT_ALLOCATION_STYLE) {
   return clamp(numeric, 0, 100);
 }
 
+export function describeAllocationStyle(allocationStyle = DEFAULT_ALLOCATION_STYLE) {
+  const normalized = normalizeAllocationStyle(allocationStyle);
+
+  if (normalized <= 33) {
+    return {
+      label: "Balanced",
+      description: "keeps the result smoother and closer together.",
+    };
+  }
+
+  if (normalized >= 67) {
+    return {
+      label: "Decisive",
+      description: "lets stronger preferences dominate more clearly.",
+    };
+  }
+
+  return {
+    label: "Moderate",
+    description: "sits between a gentle split and a sharp one.",
+  };
+}
+
 function pickWeighted(items, random = Math.random) {
   const total = items.reduce((sum, item) => sum + Math.max(item.weight, 0), 0);
   if (total <= 0) {
@@ -64,6 +87,42 @@ function countAppearances(comparisons) {
   }
 
   return { appearances, pairCounts, touchedIds };
+}
+
+function countComparisonStats(comparisons) {
+  const stats = new Map();
+
+  function ensureStats(causeId) {
+    if (!stats.has(causeId)) {
+      stats.set(causeId, {
+        appearances: 0,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+      });
+    }
+    return stats.get(causeId);
+  }
+
+  for (const comparison of comparisons) {
+    const leftStats = ensureStats(comparison.leftId);
+    const rightStats = ensureStats(comparison.rightId);
+    leftStats.appearances += 1;
+    rightStats.appearances += 1;
+
+    if (comparison.choice === "left") {
+      leftStats.wins += 1;
+      rightStats.losses += 1;
+    } else if (comparison.choice === "right") {
+      rightStats.wins += 1;
+      leftStats.losses += 1;
+    } else if (comparison.choice === "tie") {
+      leftStats.ties += 1;
+      rightStats.ties += 1;
+    }
+  }
+
+  return stats;
 }
 
 export function createInitialRatings(causes, initial = INITIAL_RATING) {
@@ -365,17 +424,17 @@ export function buildConfidence(comparisonCount, allocations) {
   const gapScore = clamp((topShare - secondShare) / 16, 0, 1);
   const confidenceScore = roundTo((countScore * 0.55 + gapScore * 0.45) * 100, 1);
 
-  let label = "Low";
+  let label = "Light signal";
   if (confidenceScore >= 70) {
-    label = "High";
+    label = "Strong signal";
   } else if (confidenceScore >= 35) {
-    label = "Medium";
+    label = "Moderate signal";
   }
 
   const description =
-    label === "High"
+    label === "Strong signal"
       ? "The ranking looks stable across the comparisons you made."
-      : label === "Medium"
+      : label === "Moderate signal"
         ? "The result is useful, but a few more comparisons would sharpen it."
         : "This result is provisional and should improve with more comparisons.";
 
@@ -392,4 +451,61 @@ export function buildShareText({ allocations, comparisonCount }) {
     lines.push(`${item.name}: ${item.share.toFixed(1)}%`);
   }
   return lines.join("\n");
+}
+
+export function buildResultExplanation({ allocations, comparisons, allocationStyle }) {
+  if (!Array.isArray(allocations) || allocations.length === 0) {
+    return [];
+  }
+
+  const stats = countComparisonStats(comparisons || []);
+  const activeAllocations = allocations.filter((item) => item.share > 0);
+  const top = activeAllocations[0] || allocations[0];
+  const second = activeAllocations[1] || allocations[1];
+  const third = activeAllocations[2] || allocations[2];
+  const style = describeAllocationStyle(allocationStyle);
+  const bullets = [];
+
+  if (top) {
+    const topStats = stats.get(top.id);
+    if (topStats && topStats.appearances > 0) {
+      bullets.push({
+        title: `${top.name} ranked first`,
+        text: `It appeared in ${topStats.appearances} comparison${topStats.appearances === 1 ? "" : "s"} and won ${topStats.wins} of them.`,
+      });
+    } else {
+      bullets.push({
+        title: `${top.name} ranked first`,
+        text: "It ended up with the strongest overall score after your comparisons were turned into ratings.",
+      });
+    }
+  }
+
+  if (second && third) {
+    const secondStats = stats.get(second.id);
+    const thirdStats = stats.get(third.id);
+    if (secondStats && thirdStats) {
+      bullets.push({
+        title: `${second.name} stayed ahead of ${third.name}`,
+        text: `It had the stronger head-to-head record across the comparisons it appeared in (${secondStats.wins} wins vs ${thirdStats.wins} for ${third.name}).`,
+      });
+    } else {
+      bullets.push({
+        title: `${second.name} stayed ahead of ${third.name}`,
+        text: "Its score stayed stronger than the causes below it across the comparisons you made.",
+      });
+    }
+  } else if (second && !third) {
+    bullets.push({
+      title: "Only two causes remained",
+      text: "With just two kept causes, the result mostly reflects their direct comparison and the allocation style setting.",
+    });
+  }
+
+  bullets.push({
+    title: `${style.label} allocation style`,
+    text: `This setting ${style.description}`,
+  });
+
+  return bullets.slice(0, 3);
 }

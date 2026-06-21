@@ -7,6 +7,8 @@ import {
   applyAction,
   buildSessionShareUrl,
   createFreshSession,
+  normalizeSession,
+  removeComparison,
   undoLastChoice,
   startSession,
 } from "../src/session.js";
@@ -24,7 +26,10 @@ function pickPreferredChoice(session, causeId) {
 }
 
 test("a repeated strong preference produces a dominant allocation", () => {
-  let session = startSession(createFreshSession());
+  const excludedCauseIds = causes
+    .filter((cause) => cause.id !== "global-health" && cause.id !== "poverty")
+    .map((cause) => cause.id);
+  let session = startSession(createFreshSession({ excludedCauseIds, allocationStyle: 100 }));
 
   for (let i = 0; i < session.comparisonTarget * 2 && session.phase === "comparing"; i += 1) {
     const choice = pickPreferredChoice(session, "global-health");
@@ -85,6 +90,25 @@ test("comparison target scales with the number of active causes", () => {
   assert.equal(reduced.comparisonTarget, 3);
 });
 
+test("custom causes are included in comparisons and saved allocations", () => {
+  const customCause = {
+    id: "custom-arts",
+    name: "Arts and Culture",
+    description: "Creative work and public access to culture.",
+  };
+  const excludedCauseIds = causes.map((cause) => cause.id);
+  let session = createFreshSession({ customCauses: [customCause], excludedCauseIds });
+
+  assert.deepEqual(session.customCauses, [{ ...customCause, category: "custom" }]);
+  session = startSession(session);
+
+  assert.equal(session.phase, "results");
+  assert.equal(session.allocations.find((item) => item.id === customCause.id)?.share, 100);
+
+  const restored = normalizeSession(structuredClone(session));
+  assert.equal(restored.allocations.find((item) => item.id === customCause.id)?.share, 100);
+});
+
 test("allocation style can be updated on a finished session", () => {
   const initial = applyAction(startSession(createFreshSession()), { action: "finish" });
   const originalCompletedAt = initial.completedAt;
@@ -94,4 +118,124 @@ test("allocation style can be updated on a finished session", () => {
   assert.equal(updated.phase, "results");
   assert.equal(updated.completedAt, originalCompletedAt);
   assert.ok(updated.allocations[0].share >= initial.allocations[0].share);
+});
+
+test("edit-causes returns the session to the intro screen", () => {
+  const started = startSession(createFreshSession({ excludedCauseIds: ["research"] }));
+  const finished = applyAction(started, { action: "finish" });
+  const edited = applyAction(finished, { action: "edit-causes" });
+
+  assert.equal(edited.phase, "intro");
+  assert.equal(edited.comparisons.length, finished.comparisons.length);
+  assert.equal(edited.comparisonCount, finished.comparisonCount);
+  assert.equal(edited.allocations, null);
+  assert.equal(edited.confidence, null);
+  assert.deepEqual(edited.excludedCauseIds, finished.excludedCauseIds);
+  assert.equal(edited.allocationStyle, finished.allocationStyle);
+  assert.equal(edited.editingReturnPhase, "results");
+});
+
+test("cancel editing restores completed results when causes are unchanged", () => {
+  const finished = applyAction(startSession(createFreshSession()), { action: "finish" });
+  const edited = applyAction(finished, { action: "edit-causes" });
+  const restored = applyAction(edited, { action: "cancel-edit" });
+
+  assert.equal(restored.phase, "results");
+  assert.deepEqual(restored.allocations, finished.allocations);
+  assert.equal(restored.completedAt, finished.completedAt);
+  assert.equal(restored.editingReturnPhase, null);
+});
+
+test("start action can resume an edited session without losing history", () => {
+  const started = startSession(createFreshSession());
+  const firstChoice = started.currentPair.leftId === "global-health" ? "left" : "right";
+  const answered = applyAction(started, { action: "choice", choice: firstChoice });
+  const edited = applyAction(answered, { action: "edit-causes" });
+  const resumed = applyAction(edited, {
+    action: "start",
+    excludedCauseIds: edited.excludedCauseIds,
+    allocationStyle: edited.allocationStyle,
+  });
+
+  assert.equal(resumed.comparisons.length, answered.comparisons.length);
+  assert.equal(resumed.comparisonCount, answered.comparisonCount);
+  assert.equal(resumed.phase, "comparing");
+  assert.ok(resumed.currentPair);
+});
+
+test("removing a custom cause also removes comparisons that reference it", () => {
+  const customCause = { id: "custom-arts", name: "Arts", description: "Creative work." };
+  const builtInExclusions = causes.slice(1).map((cause) => cause.id);
+  const started = startSession(createFreshSession({ customCauses: [customCause], excludedCauseIds: builtInExclusions }));
+  const answered = applyAction(started, { action: "choice", choice: "left" });
+  const edited = applyAction(answered, { action: "edit-causes" });
+  const resumed = applyAction(edited, {
+    action: "start",
+    customCauses: [],
+    excludedCauseIds: builtInExclusions,
+  });
+
+  assert.equal(resumed.comparisons.length, 0);
+  assert.equal(resumed.comparisonCount, 0);
+  assert.equal(resumed.phase, "results");
+});
+
+test("changing causes rebuilds progress from comparisons among kept causes", () => {
+  let session = startSession(createFreshSession());
+  while (session.phase === "comparing" && session.comparisonCount < 6) {
+    session = applyAction(session, { action: "choice", choice: "left" });
+  }
+
+  const keptIds = ["global-health", "poverty"];
+  const edited = applyAction(session, { action: "edit-causes" });
+  const resumed = applyAction(edited, {
+    action: "start",
+    excludedCauseIds: causes.filter((cause) => !keptIds.includes(cause.id)).map((cause) => cause.id),
+  });
+
+  assert.ok(resumed.comparisonCount <= resumed.comparisonTarget);
+  assert.equal(resumed.comparisonTarget, 1);
+  assert.ok(resumed.comparisons.every(
+    (comparison) => keptIds.includes(comparison.leftId) && keptIds.includes(comparison.rightId),
+  ));
+});
+
+test("editing a prior comparison replays the remaining history", () => {
+  const keptIds = causes.slice(0, 3).map((cause) => cause.id);
+  let session = startSession(createFreshSession({
+    excludedCauseIds: causes.filter((cause) => !keptIds.includes(cause.id)).map((cause) => cause.id),
+  }));
+
+  while (session.phase === "comparing") {
+    session = applyChoice(session, "left");
+  }
+
+  const edited = applyAction(session, {
+    action: "update-comparison",
+    comparisonId: session.comparisons[0].id,
+    choice: "tie",
+  });
+
+  assert.equal(edited.phase, "results");
+  assert.equal(edited.comparisonCount, session.comparisonCount);
+  assert.equal(edited.comparisons.length, session.comparisons.length);
+  assert.equal(edited.comparisons[0].choice, "tie");
+});
+
+test("removing a past comparison replays the remaining answers", () => {
+  const keptIds = causes.slice(0, 3).map((cause) => cause.id);
+  let session = startSession(createFreshSession({
+    excludedCauseIds: causes.filter((cause) => !keptIds.includes(cause.id)).map((cause) => cause.id),
+  }));
+
+  while (session.phase === "comparing") {
+    session = applyChoice(session, "left");
+  }
+
+  const removed = removeComparison(session, session.comparisons[1].id);
+
+  assert.equal(removed.phase, "comparing");
+  assert.equal(removed.comparisonCount, session.comparisonCount - 1);
+  assert.equal(removed.comparisons.length, session.comparisons.length - 1);
+  assert.ok(removed.currentPair);
 });

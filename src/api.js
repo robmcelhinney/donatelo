@@ -23,10 +23,10 @@ export function fetchSession(sessionId) {
   return requestJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-export function createSession({ start = false, excludedCauseIds = [], allocationStyle = 50 } = {}) {
+export function createSession({ start = false, excludedCauseIds = [], customCauses = [], allocationStyle = 50 } = {}) {
   return requestJson("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({ start, excludedCauseIds, allocationStyle }),
+    body: JSON.stringify({ start, excludedCauseIds, customCauses, allocationStyle }),
   });
 }
 
@@ -34,6 +34,12 @@ export function applySessionAction(sessionId, payload) {
   return requestJson(`/api/sessions/${encodeURIComponent(sessionId)}/actions`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSession(sessionId) {
+  return requestJson(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
   });
 }
 
