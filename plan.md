@@ -4,7 +4,7 @@
 
 Donatelo helps a user turn subjective cause preferences into a suggested donation allocation. It presents two cause areas at a time, records direct choices or ties, applies an Elo-style rating model, and converts those ratings into percentages.
 
-The interaction is intentionally click/tap based. Swipe gestures were removed because they made the comparison flow feel less smooth and predictable.
+The interaction is intentionally click/tap based.
 
 ## Current status
 
