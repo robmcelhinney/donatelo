@@ -156,15 +156,18 @@ function serveStaticFile(req, res, pathname) {
     return false;
   }
 
-  const contentType = safePath.endsWith(".html")
-    ? "text/html; charset=utf-8"
-    : safePath.endsWith(".js")
-      ? "text/javascript; charset=utf-8"
-      : safePath.endsWith(".css")
-        ? "text/css; charset=utf-8"
-        : safePath.endsWith(".json")
-          ? "application/json; charset=utf-8"
-          : "application/octet-stream";
+  const extension = path.extname(safePath).toLowerCase();
+  const contentTypes = {
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml; charset=utf-8",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
+  };
+  const contentType = contentTypes[extension] || "application/octet-stream";
 
   readFile(safePath)
     .then((data) => {
