@@ -298,6 +298,11 @@ export default function App() {
   }
 
   async function restart() {
+    if (!session?.id || session.phase === "intro") {
+      goHome();
+      return;
+    }
+
     setBusyAction("restart");
     setError(null);
     try {
