@@ -742,7 +742,7 @@ export default function App() {
           <p className="eyebrow">Donatelo</p>
           <h1>Minimal donation ranking.</h1>
         </button>
-        {session?.phase !== "intro" ? (
+        {session && session.phase !== "intro" ? (
           <button type="button" className="button button--ghost" onClick={restart} disabled={busyAction === "restart"}>
             {busyAction === "restart" ? "Restarting…" : "Restart"}
           </button>

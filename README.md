@@ -6,6 +6,8 @@ Instead of asking users to assign percentages from scratch, it presents two caus
 
 **Live site:** [donatelo.robmcelhinney.com](https://donatelo.robmcelhinney.com)
 
+![Donatelo cause-selection screen](docs/assets/donatelo-screenshot.png)
+
 ## Features
 
 - Rank cause areas through simple pairwise comparisons
