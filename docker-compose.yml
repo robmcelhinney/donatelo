@@ -1,0 +1,18 @@
+services:
+  donatelo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: donatelo:latest
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      NODE_ENV: production
+    volumes:
+      - donatelo-data:/app/.donatelo
+
+volumes:
+  donatelo-data:

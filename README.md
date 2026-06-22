@@ -27,6 +27,16 @@ If you want to serve the built app with the backend:
 NODE_ENV=production npm start
 ```
 
+## Run with Docker Compose
+
+Build and run the app with a persistent session store:
+
+```bash
+docker compose up -d --build
+```
+
+The app listens on port `3000` by default. Session data is stored in a named Docker volume mounted at `/app/.donatelo`, so it survives container restarts.
+
 ## Notes
 
 - The UI is intentionally minimalist: neutral background, thin borders, no gradients.
