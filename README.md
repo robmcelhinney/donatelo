@@ -34,7 +34,6 @@ The ratings are converted into positive weights and normalised to total 100%. An
 - Vite 5
 - Node.js HTTP server
 - JSON-backed session storage
-- Node's built-in test runner
 
 The Node server provides the API, persists sessions, and serves the Vite build in production. No database or third-party service is required.
 
@@ -51,14 +50,6 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Useful commands:
-
-```bash
-npm test       # Run the test suite
-npm run build  # Create a production build in dist/
-npm start      # Start the server (set NODE_ENV=production to serve dist/)
-```
-
 Session data is written to `.donatelo/sessions.json`, which is excluded from Git.
 
 ## Docker Compose
@@ -73,7 +64,7 @@ The included Compose file publishes the app at `http://localhost:3003`. Change t
 
 ```yaml
 ports:
-  - "3003:3000"
+    - "3003:3000"
 ```
 
 Sessions are stored in the `donatelo-data` named volume and survive container replacement. To inspect the service:
@@ -94,12 +85,7 @@ Sessions are stored on the server until deleted. Anyone with a session URL can v
 
 ## Contributing
 
-Issues and pull requests are welcome. Before submitting a change, run:
-
-```bash
-npm test
-npm run build
-```
+Issues and pull requests are welcome.
 
 ## Licence
 
