@@ -9,6 +9,8 @@ import { applySessionAction, createSession, deleteSession, fetchSession } from "
 import { clearActiveSessionId, loadActiveSessionId, saveActiveSessionId } from "./storage.js";
 
 const DEFAULT_COMPARE_MORE = 5;
+const TURTLE_ANIMAL_WELFARE_DESCRIPTION =
+  "Reducing suffering for farmed and wild animals, plus protecting sewer turtles, unusually literate rats, and pizza-adjacent urban wildlife.";
 
 function getSessionIdFromUrl() {
   const url = new URL(window.location.href);
@@ -145,9 +147,11 @@ export default function App() {
   const [editingComparisonChoice, setEditingComparisonChoice] = useState("left");
   const [infoPage, setInfoPage] = useState(() => getInfoPageFromUrl());
   const [allocationStyleDraft, setAllocationStyleDraft] = useState(50);
+  const [turtleMode, setTurtleMode] = useState(false);
   const allocationStyleSaveRef = useRef(null);
   const pendingAllocationStyleRef = useRef(null);
   const currentSessionIdRef = useRef(null);
+  const turtleModeResetRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -206,11 +210,27 @@ export default function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  useEffect(() => () => {
+    window.clearTimeout(turtleModeResetRef.current);
+  }, []);
+
   const currentPair = session?.currentPair || null;
   const allCauses = [...causes, ...customCauses];
-  const leftCause = currentPair ? allCauses.find((cause) => cause.id === currentPair.leftId) || null : null;
-  const rightCause = currentPair ? allCauses.find((cause) => cause.id === currentPair.rightId) || null : null;
+  function withTurtleCauseCopy(cause) {
+    if (!turtleMode || cause?.id !== "animal-welfare") {
+      return cause;
+    }
+
+    return {
+      ...cause,
+      description: TURTLE_ANIMAL_WELFARE_DESCRIPTION,
+    };
+  }
+
+  const leftCause = currentPair ? withTurtleCauseCopy(allCauses.find((cause) => cause.id === currentPair.leftId) || null) : null;
+  const rightCause = currentPair ? withTurtleCauseCopy(allCauses.find((cause) => cause.id === currentPair.rightId) || null) : null;
   const allocations = session?.allocations || [];
+  const displayAllocations = allocations.map(withTurtleCauseCopy);
   const confidence = session?.confidence || null;
   const progress = session ? (session.comparisonTarget > 0 ? Math.min(100, (session.comparisonCount / session.comparisonTarget) * 100) : 100) : 0;
   const introExcludedCauseIds = excludedCauseIds;
@@ -706,6 +726,12 @@ export default function App() {
     saveAllocationStyle(50);
   }
 
+  function handleFooterBrandClick() {
+    window.clearTimeout(turtleModeResetRef.current);
+    setTurtleMode(true);
+    turtleModeResetRef.current = window.setTimeout(() => setTurtleMode(false), 8000);
+  }
+
   const renderedComparison = session?.phase === "comparing" && leftCause && rightCause;
   const renderedResults = session?.phase === "results";
 
@@ -726,11 +752,11 @@ export default function App() {
         <header className="topbar">
           <button type="button" className="brand-link" onClick={closeInfoPage} aria-label="Return to Donatelo">
             <p className="eyebrow">Donatelo</p>
-            <h1>Minimal donation ranking.</h1>
+            <h1>{turtleMode ? "Heroes in a half shell. Donations in a full pie." : "Minimal donation ranking."}</h1>
           </button>
         </header>
         <InfoPage page={infoPage} onClose={closeInfoPage} />
-        <SiteFooter onOpenPage={openInfoPage} />
+        <SiteFooter onOpenPage={openInfoPage} onBrandClick={handleFooterBrandClick} turtleMode={turtleMode} />
       </div>
     );
   }
@@ -740,7 +766,7 @@ export default function App() {
       <header className="topbar">
         <button type="button" className="brand-link" onClick={goHome} aria-label="Go to homepage">
           <p className="eyebrow">Donatelo</p>
-          <h1>Minimal donation ranking.</h1>
+          <h1>{turtleMode ? "Heroes in a half shell. Donations in a full pie." : "Minimal donation ranking."}</h1>
         </button>
         {session && session.phase !== "intro" ? (
           <button type="button" className="button button--ghost" onClick={restart} disabled={busyAction === "restart"}>
@@ -816,7 +842,7 @@ export default function App() {
                             <strong>{cause.name}</strong>
                             <span>{isDropped ? "Dropped" : "Will ask"}</span>
                           </span>
-                          <span className="cause-toggle__description">{cause.description}</span>
+                          <span className="cause-toggle__description">{withTurtleCauseCopy(cause).description}</span>
                         </button>
                         <div className="custom-cause-card__actions">
                           <button type="button" onClick={() => beginEditingCustomCause(cause)}>Edit</button>
@@ -839,7 +865,7 @@ export default function App() {
                     <strong>{cause.name}</strong>
                     <span>{isDropped ? "Dropped" : "Will ask"}</span>
                   </span>
-                  <span className="cause-toggle__description">{cause.description}</span>
+                  <span className="cause-toggle__description">{withTurtleCauseCopy(cause).description}</span>
                 </button>
               );
             })}
@@ -1121,7 +1147,7 @@ export default function App() {
               </details>
 
               <ol className="results-list">
-                {allocations.map((item, index) => (
+                {displayAllocations.map((item, index) => (
                   <li key={item.id} className="result-row">
                     <div className="result-row__top">
                       <span className="result-row__rank">{String(index + 1).padStart(2, "0")}</span>
@@ -1176,7 +1202,7 @@ export default function App() {
           ) : null}
         </main>
       ) : null}
-      <SiteFooter onOpenPage={openInfoPage} />
+      <SiteFooter onOpenPage={openInfoPage} onBrandClick={handleFooterBrandClick} turtleMode={turtleMode} />
     </div>
   );
 }
